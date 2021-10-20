@@ -1,0 +1,358 @@
+<html>
+    <head>
+        <title>K-Means Colours</title>
+        <style> 
+            * { font-family: Verdana}
+            #fileinput {
+                width: 40%;
+                left: 30%;
+                position: fixed;
+                top: 30%;
+            }
+            #image{
+                padding-top: 30px;
+                padding-left: 30px;
+                padding-right: 30px;
+                display: none;
+            }
+            #rimage{
+                padding-top: 30px;
+                padding-left: 30px;
+                padding-right: 30px;
+                display: none;
+            }
+            #palette{
+                display: none;
+                width: -webkit-calc(100% - 270px);
+                width:    -moz-calc(100% - 270px);
+                width:         calc(100% - 270px);
+                height: 200px;
+                padding-top: 30px;
+            }
+            #inter_palettes{
+                padding-top: 30px;
+                padding-left: 30px;
+            }
+            .colorblock{
+                float: left;   
+                font-size: 10px;
+            }
+            #silhouettes{
+                display: none;
+                width: -webkit-calc(100% - 270px);
+                width:    -moz-calc(100% - 270px);
+                width:         calc(100% - 270px);
+                height: 200px;
+                padding-top: 30px;
+            }
+            .silbarup {
+               width: 6%;
+               float: left;
+               box-sizing: border-box;
+               font-size: 12px;
+               color: rgb(128,128,128);
+            }
+           .silbar {
+               height: 190px;
+               background: #524949;
+               box-sizing: border-box;
+               font-size: 10px;
+               color: white;
+               font-weight: 500;
+            }
+        </style>
+        <script>
+            
+var points = []; 
+var palette = [];
+var savedData = [];
+
+var distance = function(a,b){
+    return Math.sqrt(Math.pow(a[0]-b[0], 2)+Math.pow(a[1]-b[1], 2)+Math.pow(a[2]-b[2], 2))   
+}
+        
+var sils = [];
+var elbs = [];
+            
+var elbows = function(){
+    var aafter = [];
+    var abefore = [];
+    for (var i = 1; i < sils.length-1; i++){
+        aafter.push(0);
+        abefore.push(0);
+        for(var j = i + 1; j < sils.length; j++)
+            aafter[i-1] += sils[j-1] - sils[j];
+        for(var j = i; j > 0; j--)
+            abefore[i-1] += sils[j-1] - sils[j];
+    }
+    var mine = 1000000;
+    var maxe = 0;
+    for (var i = 0; i < aafter.length; i++){
+       abefore[i] = abefore[i]/(i+1);
+       aafter[i] = aafter[i]/(aafter.length-i);
+       elbs.push(abefore[i]-aafter[i]);
+       if (elbs[i] < mine) mine = elbs[i];
+       if (elbs[i] > maxe) maxe = elbs[i];
+    }
+    for(var i = 0; i < elbs.length; i++)
+        elbs[i] = (elbs[i]-mine) / (maxe-mine);
+    console.log(elbs);
+}
+            
+var silhouettes = function(){
+    console.log("starting silhouettes");
+    for (var k = 2; k <=16; k++){
+        console.log("k="+k);
+        var as = [];
+        var bs = [];
+        var centroids = cluster(k);
+        var clusters = [];
+        for (var i = 0; i < points.length; i++){
+            var mind = 100000;
+            var minj = 0;
+            var distances = [];
+            for (var j = 0; j < k; j++){
+                var di = distance(points[i], centroids[j]);
+                if (di < mind) { mind = di; minj = j; }
+                distances.push(di);
+            }
+            if (!clusters[minj]) clusters[minj] = [];
+            clusters[minj].push(points[i]);
+            if (!as[minj]) as[minj] = 0;
+            as[minj]+=mind;
+            if (!bs[minj]) bs[minj] = 0;
+            var minb = 1000000000;
+            for(var j=0; j<k; j++){
+                if (j != minj && distances[j] < minb) minb = distances[j];
+            }
+            bs[minj]+=minb;
+        }
+        sils.push(0);
+        for (var j = 0; j < k; j++){
+            as[j] = as[j] / clusters[j].length;
+            bs[j] = bs[j] / clusters[j].length;
+            sils[k-2] += (bs[j]-as[j])/Math.max(as[j], bs[j]);
+        }
+        sils[k-2] = sils[k-2]/k;
+    }
+    console.log(sils);
+    elbows();
+    displaySilhouettes();
+}
+
+var displaySilhouettes = function(){
+    var st = "";
+    var mins = 100000000;
+    var maxs = 0;
+    for(var i = 0; i < sils.length; i++){
+        if (sils[i] > maxs) maxs = sils[i];
+        if (sils[i] < mins) mins = sils[i];
+    }
+    mins = (Math.round(mins*10)/10)-0.1;
+    for(var i = 0; i < sils.length; i++){
+        var normalised = (sils[i]-mins)/(maxs-mins)
+        st+= '<div class="silbarup" onclick="newk('+(i+2)+');"'; 
+        if (i!= 0 && i < sils.length-1) 
+            st+= 'style="font-weight:'+(elbs[i-1]*999)+';color:rgb('+(255-(elbs[i-1]*255))+','+(255-(elbs[i-1]*255))+','+(255-(elbs[i-1]*255))+');"'
+        st += '><div class="silbar" id="silbar_'+(i+2)+'" style="border-top: '+(190-(190*normalised))+'px solid white;'; 
+        if (i == 3) st+= "background: #984325";
+        st += '">'+Math.round(sils[i]*100)/100+'</div>'+(i+2)+'</div>';
+    }
+    document.getElementById("silhouettes").innerHTML = st;
+}
+
+var inter_centroids = []
+
+var cluster = function(k){
+   var centroids = [];
+   inter_centroids = [];
+    // initialisation
+   for (var i = 0; i < k; i++){
+         var r = Math.round(Math.random()*255);
+         var g = Math.round(Math.random()*255);
+         var b = Math.round(Math.random()*255);
+        centroids.push([r,g,b]);
+   }
+   inter_centroids.push(centroids);
+   // iterate over calculating centroids
+   var done = false;
+   var count = 0;
+   while(!done){
+    var newcentroids = []
+    var lengths = []
+    for (var i = 0; i < k; i++){
+        newcentroids.push([0,0,0]);
+        lengths.push(0);
+    }
+    // update centroids... (int)
+    for (var j = 0; j < points.length; j++){
+        var mind = 1000;
+        var mindi = 0;
+        for (var i = 0; i < k; i++){
+           var d = distance(centroids[i], points[j]);
+           if (d<mind){
+               mind  = d;
+               mindi = i;
+           }
+        }
+        newcentroids[mindi][0]+=points[j][0];
+        newcentroids[mindi][1]+=points[j][1];
+        newcentroids[mindi][2]+=points[j][2];   
+        lengths[mindi]++;
+    }
+    // compute averages
+    for (var i = 0; i < k; i++){
+        if (lengths[i]!=0){
+            newcentroids[i][0] = Math.round(newcentroids[i][0]/lengths[i]);
+            newcentroids[i][1] = Math.round(newcentroids[i][1]/lengths[i]);
+            newcentroids[i][2] = Math.round(newcentroids[i][2]/lengths[i]);
+        } else {
+            var r = Math.round(Math.random()*255);
+         var g = Math.round(Math.random()*255);
+         var b = Math.round(Math.random()*255);
+            newcentroids[i]=[r,g,b];
+        }
+    }
+    // check if changes
+    done = true;
+    for (var i = 0; i < k; i++)
+        if (newcentroids[i][0] != centroids[i][0] ||
+            newcentroids[i][1] != centroids[i][1] ||
+            newcentroids[i][2] != centroids[i][2]) 
+                done = false;
+    if (++count >= 200) done = true;
+    centroids = newcentroids;
+    inter_centroids.push(centroids);
+   }
+   console.log("converged in "+count+" iterations");
+   return centroids;
+}
+
+var displayPalette = function(){
+    document.getElementById("fileinput").style.display="none"; 
+    document.getElementById("image").style.display="inline-block"; 
+    document.getElementById("palette").style.display="inline-block";     
+    document.getElementById("rimage").style.display="inline-block"; 
+    document.getElementById("silhouettes").style.display="inline-block";     
+    var st = "";
+    for(var i = 0; i < palette.length; i++){
+        var avg = (palette[i][0]+palette[i][1]+palette[i][2])/2
+        var color = "black";
+        var vstring = palette[i][0].toString(16)+palette[i][1].toString(16)+palette[i][2].toString(16);
+        if (avg < 128) color = "white";
+        st+="<div class='colorblock' style='background: rgb("+palette[i][0]+","+palette[i][1]+","+palette[i][2]+"); width: "+(90/palette.length)+"%; height: 100%; color: "+color+"'>#"+vstring+"</div>";
+    }
+    document.getElementById("palette").innerHTML = st;
+    st = ""
+    console.log(inter_centroids.length)
+    for (var j=0; j < inter_centroids.length; j++){
+    st +="<div style='margin-top: 1px; height: 20px'>"
+    var pa = inter_centroids[j]
+    for(var i = 0; i < pa.length; i++){
+        st+="<div class='colorblock' style='background: rgb("+pa[i][0]+","+pa[i][1]+","+pa[i][2]+"); width: "+(90/palette.length)+"%; height: 20px'>&nbsp;</div>";
+    }
+    st += "</div>"
+    }
+    console.log(st);
+    document.getElementById("inter_palettes").innerHTML = st;    
+}
+
+var newk = function(nk){
+    palette = cluster(nk);
+    displayPalette();
+    recolor();
+    var sbe = document.getElementsByClassName("silbar");
+    for(var e in sbe){
+        if (sbe[e].style)
+            sbe[e].style.background = "#524949";
+    }
+    document.getElementById("silbar_"+nk).style.background = "#984325";
+}
+            
+var recolor = function(){
+   var canvas = document.getElementsByTagName('canvas')[0];
+   var context = canvas.getContext('2d'); 
+   var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+   var d1 = imageData.data;
+   var d = [];
+   for (var i = 0; i < d1.length-3; i+=4){
+        var point = [d1[i],d1[i+1],d1[i+2]];
+        var mind = 100000;
+        var minj = 0;
+        for (var j = 0; j < palette.length; j++){
+            var di = distance(point, palette[j]);
+            if (di < mind) { mind = di; minj = j; }
+        }
+        d.push(palette[minj][0]);
+        d.push(palette[minj][1]);
+        d.push(palette[minj][2]);
+        d.push(255);
+    }
+    // TODO change to IDs
+    canvas = document.getElementsByTagName('canvas')[1];
+    context = canvas.getContext('2d'); 
+    var imageData2 = context.createImageData(200,200);
+    imageData2.data.set(d);
+    context.putImageData(imageData2, 0, 0);
+}
+
+var processData = function(d){
+    savedData = d.slice();
+    for (var i = 0; i < d.length-3; i+=4){
+        points.push([d[i],d[i+1],d[i+2]]);
+       }
+    // start with 5...
+    palette = cluster(5);
+    displayPalette();
+    recolor();
+    setTimeout(silhouettes, 100);
+}
+            
+var openFile = function(file) {
+    var input = file.target;
+    var reader = new FileReader();
+    reader.onload = function(){
+    var dataURL = reader.result;
+    var canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 200;
+    var canvas2 = document.createElement('canvas');
+    canvas2.width = 200;
+    canvas2.height = 200;
+    var context = canvas.getContext('2d');  
+    var img = new Image();
+    img.addEventListener('load', function(){
+            img.width=200
+            img.height=200
+            context.drawImage(img, 0, 0, img.width, img.height);
+            imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            var output = document.getElementById('image');
+            output.appendChild(canvas);
+            var output2 = document.getElementById('rimage');
+            output2.appendChild(canvas2);
+            processData(imageData.data);
+        }, false);
+    img.src = dataURL;
+    };
+    reader.readAsDataURL(input.files[0]);
+  };
+        </script>
+    </head>
+    <body>
+        <div id="fileinput">
+            <p id="filemessage">The image from which you would like to create a pallette:</p>
+         <input type='file' accept='image/*' onchange='openFile(event)'>
+        </div>
+        <div style="width: 100%;">
+            <div id='image'></div>
+            <div id="palette"></div>
+        </div>
+        <div style="width: 100%">
+            <div id='rimage'></div>      
+            <div id="silhouettes"></div>
+        </div> 
+        <div id="inter_palettes">
+        </div>
+    </body>
+</html>
+        
